@@ -1,0 +1,20 @@
+{
+  "accountAssociation": {
+    "header": "GENERATE_VIA_WARPCAST_DEVELOPER_TOOLS",
+    "payload": "GENERATE_VIA_WARPCAST_DEVELOPER_TOOLS",
+    "signature": "GENERATE_VIA_WARPCAST_DEVELOPER_TOOLS"
+  },
+  "frame": {
+    "version": "1",
+    "name": "CeloRemit",
+    "iconUrl": "https://YOUR_DOMAIN/icon.png",
+    "homeUrl": "https://YOUR_DOMAIN",
+    "imageUrl": "https://YOUR_DOMAIN/og-image.png",
+    "splashImageUrl": "https://YOUR_DOMAIN/splash.png",
+    "splashBackgroundColor": "#0D4A3C",
+    "buttonTitle": "💸 Send Money",
+    "webhookUrl": "https://YOUR_DOMAIN/api/webhook",
+    "primaryCategory": "finance",
+    "tags": ["remittance", "payments", "celo", "stablecoins", "mento", "defi", "ai"]
+  }
+}
