@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useAccount, useConnect, useDisconnect, useBalance, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
-import { sdk } from '@farcaster/miniapp-sdk';
 import { MENTO_STABLECOINS, getActiveStablecoins, ERC20_ABI, CELOREMIT_ADDRESS, CELOREMIT_ABI } from '@/config/contracts';
 import { SelfVerification } from '@/components/SelfVerification';
 import { CurrencySelector } from '@/components/CurrencySelector';
@@ -24,7 +23,7 @@ export default function Home() {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
-  
+
   const [inputText, setInputText] = useState('');
   const [parsedIntent, setParsedIntent] = useState<ParsedIntent | null>(null);
   const [isParsing, setIsParsing] = useState(false);
@@ -35,14 +34,17 @@ export default function Home() {
   const [isVerified, setIsVerified] = useState(false);
   const [activeTab, setActiveTab] = useState<'send' | 'history'>('send');
   const [isMiniApp, setIsMiniApp] = useState(false);
+  const [farcasterSdk, setFarcasterSdk] = useState<any>(null);
 
   // Farcaster Mini App initialization
   useEffect(() => {
     const initMiniApp = async () => {
       try {
+        const { sdk } = await import('@farcaster/miniapp-sdk');
         const context = await sdk.context;
         if (context) {
           setIsMiniApp(true);
+          setFarcasterSdk(sdk);
           await sdk.actions.ready();
         }
       } catch (e) {
@@ -51,6 +53,29 @@ export default function Home() {
     };
     initMiniApp();
   }, []);
+
+  // Connect wallet handler - works for both browser and Farcaster
+  const connectWallet = async () => {
+    try {
+      if (isMiniApp && farcasterSdk) {
+        // Farcaster mini-app wallet
+        await farcasterSdk.wallet.ethProvider.request({
+          method: 'eth_requestAccounts',
+        });
+      } else {
+        // Browser wallet (MetaMask, etc.)
+        if (connectors.length > 0) {
+          connect({ connector: connectors[0] });
+        }
+      }
+    } catch (error) {
+      console.error('Connection failed:', error);
+      // Fallback to regular connector
+      if (connectors.length > 0) {
+        connect({ connector: connectors[0] });
+      }
+    }
+  };
 
   // Get balance of selected source currency
   const sourceToken = parsedIntent ? MENTO_STABLECOINS[parsedIntent.sourceCurrency as keyof typeof MENTO_STABLECOINS] : null;
@@ -62,26 +87,26 @@ export default function Home() {
   // Contract write hooks
   const { data: approveHash, writeContract: approveToken, isPending: isApproving } = useWriteContract();
   const { data: sendHash, writeContract: sendRemittance, isPending: isSending } = useWriteContract();
-  
+
   const { isLoading: isApproveConfirming } = useWaitForTransactionReceipt({ hash: approveHash });
   const { isLoading: isSendConfirming, isSuccess: isSendSuccess } = useWaitForTransactionReceipt({ hash: sendHash });
 
   // Parse intent from natural language
   const parseIntent = async () => {
     if (!inputText.trim()) return;
-    
+
     setIsParsing(true);
     setParseMessage('');
-    
+
     try {
       const res = await fetch('/api/parse-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: inputText, userAddress: address }),
       });
-      
+
       const data = await res.json();
-      
+
       if (data.success && data.intent) {
         setParsedIntent(data.intent);
         setParseMessage(data.message || '');
@@ -99,21 +124,21 @@ export default function Home() {
       setParseMessage('Failed to process your request');
       setParsedIntent(null);
     }
-    
+
     setIsParsing(false);
   };
 
   // Execute the remittance
   const executeRemittance = async () => {
     if (!parsedIntent || !recipientAddress || !address) return;
-    
+
     const sourceTokenInfo = MENTO_STABLECOINS[parsedIntent.sourceCurrency as keyof typeof MENTO_STABLECOINS];
     const targetTokenInfo = MENTO_STABLECOINS[parsedIntent.targetCurrency as keyof typeof MENTO_STABLECOINS];
-    
+
     if (!sourceTokenInfo || !targetTokenInfo) return;
-    
+
     const amount = parseUnits(parsedIntent.amount.toString(), 18);
-    
+
     // First approve the token
     approveToken({
       address: sourceTokenInfo.address as `0x${string}`,
@@ -130,7 +155,7 @@ export default function Home() {
       const targetTokenInfo = MENTO_STABLECOINS[parsedIntent.targetCurrency as keyof typeof MENTO_STABLECOINS];
       const amount = parseUnits(parsedIntent.amount.toString(), 18);
       const minTarget = (amount * BigInt(95)) / BigInt(100); // 5% slippage
-      
+
       sendRemittance({
         address: CELOREMIT_ADDRESS as `0x${string}`,
         abi: CELOREMIT_ABI,
@@ -164,7 +189,7 @@ export default function Home() {
             <span className="text-2xl">💸</span>
             <h1 className="text-xl font-bold">CeloRemit</h1>
           </div>
-          
+
           {isConnected ? (
             <button
               onClick={() => disconnect()}
@@ -174,8 +199,8 @@ export default function Home() {
             </button>
           ) : (
             <button
-              onClick={() => connect({ connector: connectors[0] })}
-              className="px-4 py-1.5 bg-yellow-500 text-emerald-900 rounded-full text-sm font-semibold"
+              onClick={connectWallet}
+              className="px-4 py-1.5 bg-yellow-500 text-emerald-900 rounded-full text-sm font-semibold hover:bg-yellow-400 transition"
             >
               Connect
             </button>
@@ -224,19 +249,19 @@ export default function Home() {
                 <button
                   onClick={parseIntent}
                   disabled={isParsing || !inputText.trim()}
-                  className="absolute right-2 bottom-2 p-2 bg-yellow-500 rounded-lg text-emerald-900 disabled:opacity-50"
+                  className="absolute right-2 bottom-2 p-2 bg-yellow-500 rounded-lg text-emerald-900 disabled:opacity-50 hover:bg-yellow-400 transition"
                 >
                   {isParsing ? '⏳' : '✨'}
                 </button>
               </div>
-              
+
               {/* Quick Actions */}
               <div className="flex gap-2 mt-3 flex-wrap">
                 {quickActions.map((action) => (
                   <button
                     key={action}
-                    onClick={() => { setInputText(action); }}
-                    className="text-xs px-3 py-1 bg-emerald-700/30 rounded-full text-emerald-300 hover:bg-emerald-700/50"
+                    onClick={() => setInputText(action)}
+                    className="text-xs px-3 py-1 bg-emerald-700/30 rounded-full text-emerald-300 hover:bg-emerald-700/50 transition"
                   >
                     {action}
                   </button>
@@ -322,7 +347,7 @@ export default function Home() {
                 ) : (
                   <button
                     onClick={() => setShowVerification(true)}
-                    className="w-full py-2 bg-blue-600/30 rounded-xl text-blue-300 text-sm"
+                    className="w-full py-2 bg-blue-600/30 rounded-xl text-blue-300 text-sm hover:bg-blue-600/50 transition"
                   >
                     🔐 Verify Identity (Self Protocol)
                   </button>
@@ -332,7 +357,7 @@ export default function Home() {
                 <button
                   onClick={executeRemittance}
                   disabled={!isConnected || !recipientAddress || isApproving || isSending || isApproveConfirming || isSendConfirming}
-                  className="w-full py-4 bg-yellow-500 text-emerald-900 rounded-xl font-bold text-lg disabled:opacity-50"
+                  className="w-full py-4 bg-yellow-500 text-emerald-900 rounded-xl font-bold text-lg disabled:opacity-50 hover:bg-yellow-400 transition"
                 >
                   {!isConnected ? 'Connect Wallet' :
                    isApproving || isApproveConfirming ? 'Approving...' :
@@ -342,7 +367,7 @@ export default function Home() {
                 </button>
 
                 {isSendSuccess && sendHash && (
-                  <a
+                  
                     href={`https://celoscan.io/tx/${sendHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
