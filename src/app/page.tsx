@@ -206,20 +206,26 @@ export default function Home() {
 
   // Execute the remittance
   const executeRemittance = useCallback(async () => {
+    console.log('executeRemittance called', { parsedIntent, recipientAddress, address });
+    
     if (!parsedIntent || !recipientAddress || !address) {
-      setError('Please fill in all required fields');
+      const errorMsg = !parsedIntent ? 'No intent parsed' : !recipientAddress ? 'No recipient address' : 'Wallet not connected';
+      setError(`Please fill in all required fields: ${errorMsg}`);
+      console.error('Missing required fields:', { parsedIntent: !!parsedIntent, recipientAddress: !!recipientAddress, address: !!address });
       return;
     }
 
     // Validate address
     if (!isAddress(recipientAddress)) {
       setError('Invalid recipient address');
+      console.error('Invalid address:', recipientAddress);
       return;
     }
 
     // Validate amount
     if (parsedIntent.amount <= 0) {
       setError('Amount must be greater than 0');
+      console.error('Invalid amount:', parsedIntent.amount);
       return;
     }
     
@@ -228,6 +234,7 @@ export default function Home() {
     
     if (!sourceTokenInfo || !targetTokenInfo) {
       setError('Invalid currency selection');
+      console.error('Invalid tokens:', { sourceTokenInfo, targetTokenInfo });
       return;
     }
 
@@ -238,19 +245,26 @@ export default function Home() {
     }
 
     // Check balance
-    if (balance && balance.value < parseUnits(parsedIntent.amount.toString(), 18)) {
+    const amount = parseUnits(parsedIntent.amount.toString(), 18);
+    if (balance && balance.value < amount) {
       setError('Insufficient balance');
+      console.error('Insufficient balance:', { 
+        required: amount.toString(), 
+        available: balance.value.toString() 
+      });
       return;
     }
 
     setError('');
     hasExecutedRef.current = false;
-    const amount = parseUnits(parsedIntent.amount.toString(), 18);
     
     // Check if approval is needed
     const currentAllowance = allowance || BigInt(0);
+    console.log('Checking allowance:', { currentAllowance: currentAllowance.toString(), amount: amount.toString() });
+    
     if (currentAllowance < amount) {
     // First approve the token
+      console.log('Approval needed, requesting approval...');
       try {
     approveToken({
       address: sourceTokenInfo.address as `0x${string}`,
@@ -258,15 +272,17 @@ export default function Home() {
       functionName: 'approve',
       args: [CELOREMIT_ADDRESS as `0x${string}`, amount],
     });
+        console.log('Approval request sent');
       } catch (error) {
         setError('Failed to approve token. Please try again.');
         console.error('Approval error:', error);
       }
     } else {
       // Already approved, execute directly
+      console.log('Already approved, executing send...');
       executeSend(amount, sourceTokenInfo, targetTokenInfo);
     }
-  }, [parsedIntent, recipientAddress, address, balance, allowance, approveToken]);
+  }, [parsedIntent, recipientAddress, address, balance, allowance, approveToken, executeSend]);
 
   // Execute send transaction
   const executeSend = useCallback((amount: bigint, sourceTokenInfo: typeof MENTO_STABLECOINS[keyof typeof MENTO_STABLECOINS], targetTokenInfo: typeof MENTO_STABLECOINS[keyof typeof MENTO_STABLECOINS]) => {
@@ -563,12 +579,12 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <button
-                      onClick={() => setShowVerification(true)}
+                  <button
+                    onClick={() => setShowVerification(true)}
                       className="w-full py-2 bg-blue-600/30 rounded-xl text-blue-300 text-sm hover:bg-blue-600/40 transition"
-                    >
+                  >
                       🔐 Verify Identity (Self Protocol) - Optional
-                    </button>
+                  </button>
                     <p className="text-xs text-emerald-400 text-center">
                       Verification is optional. You can send without verifying.
                     </p>
@@ -577,7 +593,19 @@ export default function Home() {
 
                 {/* Send Button */}
                 <button
-                  onClick={executeRemittance}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    console.log('Send button clicked', {
+                      isConnected,
+                      recipientAddress,
+                      isValidAddress,
+                      amount: parsedIntent.amount,
+                      hasBalance: balance ? balance.value >= parseUnits(parsedIntent.amount.toString(), 18) : 'no balance',
+                      sourceCurrency: parsedIntent.sourceCurrency,
+                      targetCurrency: parsedIntent.targetCurrency,
+                    });
+                    executeRemittance();
+                  }}
                   disabled={
                     !isConnected || 
                     !recipientAddress || 
@@ -594,6 +622,11 @@ export default function Home() {
                   className="w-full py-4 bg-yellow-500 text-emerald-900 rounded-xl font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-yellow-400 transition"
                 >
                   {!isConnected ? 'Connect Wallet' :
+                   !recipientAddress ? 'Enter Recipient Address' :
+                   !isValidAddress ? 'Invalid Address' :
+                   parsedIntent.amount <= 0 ? 'Enter Amount' :
+                   (balance && balance.value < parseUnits(parsedIntent.amount.toString(), 18)) ? 'Insufficient Balance' :
+                   parsedIntent.sourceCurrency === parsedIntent.targetCurrency ? 'Select Different Currencies' :
                    isLoadingQuote ? 'Loading quote...' :
                    isApproving || isApproveConfirming ? 'Approving...' :
                    isSending || isSendConfirming ? 'Sending...' :
