@@ -206,9 +206,36 @@ export default function Home() {
 
   // Execute send transaction
   const executeSend = useCallback((amount: bigint, sourceTokenInfo: typeof MENTO_STABLECOINS[keyof typeof MENTO_STABLECOINS], targetTokenInfo: typeof MENTO_STABLECOINS[keyof typeof MENTO_STABLECOINS]) => {
-    if (!parsedIntent || !recipientAddress) return;
+    if (!parsedIntent || !recipientAddress || !address) {
+      console.error('Missing required data for send:', { parsedIntent: !!parsedIntent, recipientAddress: !!recipientAddress, address: !!address });
+      return;
+    }
+
+    // Validate addresses
+    if (!isAddress(recipientAddress) || !isAddress(sourceTokenInfo.address) || !isAddress(targetTokenInfo.address)) {
+      setError('Invalid address detected. Please check your inputs.');
+      console.error('Invalid addresses:', { recipientAddress, sourceToken: sourceTokenInfo.address, targetToken: targetTokenInfo.address });
+      return;
+    }
+
+    // Ensure amount is valid
+    if (amount <= BigInt(0)) {
+      setError('Invalid amount. Amount must be greater than 0.');
+      console.error('Invalid amount:', amount.toString());
+      return;
+    }
+
+    // Calculate minTarget with proper slippage (5%)
+    const minTarget = quote?.targetAmount || (amount * BigInt(95)) / BigInt(100);
     
-    const minTarget = quote?.targetAmount || (amount * BigInt(95)) / BigInt(100); // 5% slippage
+    console.log('Executing send with params:', {
+      recipient: recipientAddress,
+      sourceToken: sourceTokenInfo.address,
+      targetToken: targetTokenInfo.address,
+      amount: amount.toString(),
+      minTarget: minTarget.toString(),
+      memo: memo || '',
+    });
     
     try {
       sendRemittance({
@@ -224,11 +251,12 @@ export default function Home() {
           memo || '',
         ],
       });
-    } catch (error) {
-      setError('Failed to send transaction. Please try again.');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setError(`Failed to send transaction: ${errorMessage}. Please check your balance and try again.`);
       console.error('Send error:', error);
     }
-  }, [parsedIntent, recipientAddress, memo, quote, sendRemittance]);
+  }, [parsedIntent, recipientAddress, memo, quote, sendRemittance, address]);
 
   // Execute the remittance
   const executeRemittance = useCallback(async () => {
@@ -286,21 +314,33 @@ export default function Home() {
     
     // Check if approval is needed
     const currentAllowance = allowance || BigInt(0);
-    console.log('Checking allowance:', { currentAllowance: currentAllowance.toString(), amount: amount.toString() });
+    console.log('Checking allowance:', { 
+      currentAllowance: currentAllowance.toString(), 
+      amount: amount.toString(),
+      needsApproval: currentAllowance < amount 
+    });
+    
+    // Approve a bit more than needed to avoid multiple approvals (add 10% buffer)
+    const approvalAmount = (amount * BigInt(110)) / BigInt(100);
     
     if (currentAllowance < amount) {
       // First approve the token
-      console.log('Approval needed, requesting approval...');
+      console.log('Approval needed, requesting approval...', {
+        token: sourceTokenInfo.address,
+        spender: CELOREMIT_ADDRESS,
+        amount: approvalAmount.toString(),
+      });
       try {
         approveToken({
           address: sourceTokenInfo.address as `0x${string}`,
           abi: ERC20_ABI,
           functionName: 'approve',
-          args: [CELOREMIT_ADDRESS as `0x${string}`, amount],
+          args: [CELOREMIT_ADDRESS as `0x${string}`, approvalAmount],
         });
         console.log('Approval request sent');
-      } catch (error) {
-        setError('Failed to approve token. Please try again.');
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        setError(`Failed to approve token: ${errorMessage}. Please try again.`);
         console.error('Approval error:', error);
       }
     } else {
