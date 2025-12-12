@@ -107,7 +107,7 @@ interface RawIntent {
   confidence?: number | string;
 }
 
-function validateIntent(p: RawIntent): ParsedIntent['intent'] {
+function validateIntent(p: RawIntent): NonNullable<ParsedIntent['intent']> {
   const validCurrencies = Object.keys(MENTO_STABLECOINS);
   const validActions: Array<'send' | 'convert' | 'check_rate'> = ['send', 'convert', 'check_rate'];
   
@@ -156,7 +156,7 @@ function parseIntentFallback(message: string): ParsedIntent {
   return { success: true, intent, message: formatIntent(intent) };
 }
 
-function formatIntent(i: ParsedIntent['intent']): string {
+function formatIntent(i: NonNullable<ParsedIntent['intent']>): string {
   const src = MENTO_STABLECOINS[i.sourceCurrency as keyof typeof MENTO_STABLECOINS];
   const tgt = MENTO_STABLECOINS[i.targetCurrency as keyof typeof MENTO_STABLECOINS];
   if (i.action === 'send') return `Send ${i.amount} ${src?.symbol} ${src?.flag || ''} → ${tgt?.symbol} ${tgt?.flag || ''}`;

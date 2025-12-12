@@ -1,5 +1,8 @@
 'use client';
 
+// Force dynamic rendering to avoid SSR issues with localStorage and wallet connections
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
@@ -68,9 +71,14 @@ export default function Home() {
 
   // Check verification status from localStorage
   useEffect(() => {
-    if (address) {
-      const verified = localStorage.getItem(`self_verified_${address}`);
-      setIsVerified(verified === 'true');
+    if (address && typeof window !== 'undefined') {
+      try {
+        const verified = localStorage.getItem(`self_verified_${address}`);
+        setIsVerified(verified === 'true');
+      } catch (error) {
+        // localStorage might not be available in some environments
+        console.warn('Failed to access localStorage:', error);
+      }
     }
   }, [address]);
 
@@ -631,8 +639,12 @@ export default function Home() {
       {showVerification && (
         <SelfVerification
           onVerified={() => {
-            if (address) {
-              localStorage.setItem(`self_verified_${address}`, 'true');
+            if (address && typeof window !== 'undefined') {
+              try {
+                localStorage.setItem(`self_verified_${address}`, 'true');
+              } catch (error) {
+                console.warn('Failed to save to localStorage:', error);
+              }
             }
             setIsVerified(true);
             setShowVerification(false);

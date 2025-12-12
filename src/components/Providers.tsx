@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider } from 'wagmi';

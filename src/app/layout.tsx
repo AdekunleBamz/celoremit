@@ -2,6 +2,9 @@ import type { Metadata, Viewport } from 'next';
 import { Providers } from '@/components/Providers';
 import './globals.css';
 
+// Force dynamic rendering to avoid SSR issues with wallet connections
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'CeloRemit - AI-Powered Remittances',
   description: 'Send money globally using natural language. Powered by Mento stablecoins on Celo.',

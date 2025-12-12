@@ -129,6 +129,27 @@ CeloRemit uses Self Protocol for:
 - **Age Verification**: Ensure 18+ for financial services
 - **Privacy**: Zero-knowledge proofs - no personal data stored
 
+### Self Protocol Setup
+
+**No API Keys Required!** Self Protocol is decentralized and doesn't require API keys.
+
+**For Development (Localhost):**
+- Verification works in development mode without full ZK proof verification
+- Use "Skip Verification" button for testing on localhost
+
+**For Production:**
+1. Install the backend verifier:
+   ```bash
+   npm install @selfxyz/core
+   ```
+2. Uncomment the verification code in `src/app/api/self/verify/route.ts`
+3. The verifier will automatically verify ZK proofs using the Self Protocol hub
+
+**Configuration:**
+- Hub Address: `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` (Celo mainnet)
+- RPC URL: `https://forno.celo.org`
+- No API keys or authentication needed!
+
 ## 🛠️ Tech Stack
 
 - **Frontend**: Next.js 14, React 18, TailwindCSS
