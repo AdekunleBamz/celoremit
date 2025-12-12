@@ -34,10 +34,16 @@ Available currencies: ${getActiveStablecoins().map(c => `${c.symbol} (${c.countr
 
 Country mappings: USA→cUSD, Europe→cEUR, Brazil→cREAL, Kenya→cKES, Philippines→PUSO, Colombia→cCOP, West Africa→eXOF
 
-Return JSON only:
-{"action":"send|convert|check_rate","amount":<number>,"sourceCurrency":"<symbol>","targetCurrency":"<symbol>","recipient":"<address or description>","recipientType":"address|contact|country","memo":"<optional>","confidence":<0-1>}
+IMPORTANT RULES:
+1. If user explicitly mentions a currency (e.g., "cUSD", "cEUR"), that is the SOURCE currency
+2. If user mentions a destination country/region (e.g., "to Europe", "to Kenya"), that determines the TARGET currency
+3. Example: "send $50 cUSD to Europe" → sourceCurrency: "cUSD", targetCurrency: "cEUR"
+4. Example: "send 100 cEUR to Kenya" → sourceCurrency: "cEUR", targetCurrency: "cKES"
+5. If no source currency mentioned, default to cUSD
+6. Extract wallet addresses from the message as recipient
 
-Default source to cUSD. Infer target from destination country.`;
+Return JSON only:
+{"action":"send|convert|check_rate","amount":<number>,"sourceCurrency":"<symbol>","targetCurrency":"<symbol>","recipient":"<address or description>","recipientType":"address|contact|country","memo":"<optional>","confidence":<0-1>}`;
 
 export async function POST(request: NextRequest) {
   try {
@@ -134,19 +140,53 @@ function parseIntentFallback(message: string): ParsedIntent {
   const amountMatch = message.match(/(\d+(?:\.\d+)?)/);
   const amount = amountMatch ? parseFloat(amountMatch[1]) : 0;
 
-  let sourceCurrency = 'cUSD';
-  if (lower.includes('euro') || lower.includes('ceur')) sourceCurrency = 'cEUR';
-  else if (lower.includes('real') || lower.includes('creal')) sourceCurrency = 'cREAL';
+  // First, check for explicit currency mentions in the message (source currency)
+  let sourceCurrency = 'cUSD'; // Default
+  const currencyPatterns: Record<string, string> = {
+    'cusd': 'cUSD',
+    'ceur': 'cEUR', 'euro': 'cEUR',
+    'creal': 'cREAL', 'real': 'cREAL',
+    'ckes': 'cKES', 'kes': 'cKES',
+    'puso': 'PUSO', 'peso': 'PUSO',
+    'ccop': 'cCOP', 'cop': 'cCOP',
+    'exof': 'eXOF', 'xof': 'eXOF', 'cfa': 'eXOF',
+  };
 
-  let targetCurrency = 'cUSD';
+  // Check for explicit currency mentions (prioritize source currency detection)
+  for (const [pattern, currency] of Object.entries(currencyPatterns)) {
+    if (lower.includes(pattern)) {
+      sourceCurrency = currency;
+      break; // First match wins for source
+    }
+  }
+
+  // Then, check for destination country/region to determine target currency
+  let targetCurrency = 'cUSD'; // Default
   for (const [country, currency] of Object.entries(COUNTRY_CURRENCY_MAP)) {
-    if (lower.includes(country)) { targetCurrency = currency; break; }
+    if (lower.includes(country)) {
+      targetCurrency = currency;
+      // If target currency matches source, keep default or use a different default
+      if (targetCurrency === sourceCurrency) {
+        targetCurrency = sourceCurrency === 'cUSD' ? 'cEUR' : 'cUSD';
+      }
+      break;
+    }
+  }
+
+  // If no target found but we have a source, try to infer from context
+  // (e.g., "send to europe" should set target to cEUR)
+  if (targetCurrency === 'cUSD' && sourceCurrency !== 'cUSD') {
+    // If source is specified but no target country found, keep default
+    // This will be handled by the AI in production
   }
 
   let recipient: string | undefined;
   let recipientType: 'address' | 'contact' | 'country' = 'country';
   const addressMatch = message.match(/0x[a-fA-F0-9]{40}/);
-  if (addressMatch) { recipient = addressMatch[0]; recipientType = 'address'; }
+  if (addressMatch) { 
+    recipient = addressMatch[0]; 
+    recipientType = 'address'; 
+  }
 
   if (amount === 0) {
     return { success: false, message: 'Could not understand amount', suggestions: ['Try: "Send $50 to Philippines"'] };
