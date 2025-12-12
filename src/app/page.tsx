@@ -352,17 +352,40 @@ export default function Home() {
 
   // After approval, execute the transfer
   useEffect(() => {
-    if (approveHash && !isApproveConfirming && !hasExecutedRef.current && parsedIntent && recipientAddress) {
+    if (approveHash && !isApproveConfirming && !hasExecutedRef.current && parsedIntent && recipientAddress && address) {
       hasExecutedRef.current = true;
       const sourceTokenInfo = MENTO_STABLECOINS[parsedIntent.sourceCurrency as keyof typeof MENTO_STABLECOINS];
       const targetTokenInfo = MENTO_STABLECOINS[parsedIntent.targetCurrency as keyof typeof MENTO_STABLECOINS];
       
-      if (!sourceTokenInfo || !targetTokenInfo) return;
+      if (!sourceTokenInfo || !targetTokenInfo) {
+        console.error('Missing token info after approval');
+        hasExecutedRef.current = false;
+        setError('Invalid token configuration');
+        return;
+      }
       
+      // Double-check balance before executing
       const amount = parseUnits(parsedIntent.amount.toString(), 18);
-      executeSend(amount, sourceTokenInfo, targetTokenInfo);
+      if (balance && balance.value < amount) {
+        setError('Insufficient balance. Balance may have changed.');
+        hasExecutedRef.current = false;
+        return;
+      }
+      
+      // Validate addresses
+      if (!isAddress(recipientAddress) || !isAddress(sourceTokenInfo.address) || !isAddress(targetTokenInfo.address)) {
+        setError('Invalid address detected. Please check your inputs.');
+        hasExecutedRef.current = false;
+        return;
+      }
+      
+      console.log('Approval confirmed, executing send transaction...');
+      // Small delay to ensure approval is fully processed on-chain
+      setTimeout(() => {
+        executeSend(amount, sourceTokenInfo, targetTokenInfo);
+      }, 1000);
     }
-  }, [approveHash, isApproveConfirming, parsedIntent, recipientAddress, executeSend]);
+  }, [approveHash, isApproveConfirming, parsedIntent, recipientAddress, executeSend, address, balance]);
 
   // Reset state after successful transaction
   useEffect(() => {
