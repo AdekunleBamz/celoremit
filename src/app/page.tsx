@@ -225,10 +225,18 @@ export default function Home() {
       return;
     }
 
+    // Check if contract address is valid
+    if (!isAddress(CELOREMIT_ADDRESS)) {
+      setError('Invalid contract address. Please contact support.');
+      console.error('Invalid contract address:', CELOREMIT_ADDRESS);
+      return;
+    }
+
     // Calculate minTarget with proper slippage (5%)
     const minTarget = quote?.targetAmount || (amount * BigInt(95)) / BigInt(100);
     
     console.log('Executing send with params:', {
+      contract: CELOREMIT_ADDRESS,
       recipient: recipientAddress,
       sourceToken: sourceTokenInfo.address,
       targetToken: targetTokenInfo.address,
@@ -253,7 +261,14 @@ export default function Home() {
       });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setError(`Failed to send transaction: ${errorMessage}. Please check your balance and try again.`);
+      // More specific error messages
+      if (errorMessage.includes('SafeERC20') || errorMessage.includes('call failed')) {
+        setError('Transaction failed: Token transfer error. Please ensure you have approved the contract and have sufficient balance. The contract may need to be redeployed with all currencies initialized.');
+      } else if (errorMessage.includes('Invalid token') || errorMessage.includes('not valid')) {
+        setError('Invalid token: The selected currency may not be supported by the contract. Please try a different currency.');
+      } else {
+        setError(`Failed to send transaction: ${errorMessage}. Please check your balance, approval, and try again.`);
+      }
       console.error('Send error:', error);
     }
   }, [parsedIntent, recipientAddress, memo, quote, sendRemittance, address]);
@@ -350,9 +365,17 @@ export default function Home() {
     }
   }, [parsedIntent, recipientAddress, address, balance, allowance, approveToken, executeSend]);
 
-  // After approval, execute the transfer
+  // Wait for approval transaction to be confirmed
+  const { isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({ 
+    hash: approveHash,
+    query: {
+      enabled: !!approveHash,
+    },
+  });
+
+  // After approval is confirmed, execute the transfer
   useEffect(() => {
-    if (approveHash && !isApproveConfirming && !hasExecutedRef.current && parsedIntent && recipientAddress && address) {
+    if (isApproveSuccess && !hasExecutedRef.current && parsedIntent && recipientAddress && address) {
       hasExecutedRef.current = true;
       const sourceTokenInfo = MENTO_STABLECOINS[parsedIntent.sourceCurrency as keyof typeof MENTO_STABLECOINS];
       const targetTokenInfo = MENTO_STABLECOINS[parsedIntent.targetCurrency as keyof typeof MENTO_STABLECOINS];
@@ -379,13 +402,11 @@ export default function Home() {
         return;
       }
       
-      console.log('Approval confirmed, executing send transaction...');
-      // Small delay to ensure approval is fully processed on-chain
-      setTimeout(() => {
-        executeSend(amount, sourceTokenInfo, targetTokenInfo);
-      }, 1000);
+      console.log('Approval confirmed on-chain, executing send transaction...');
+      // Execute immediately since approval is confirmed
+      executeSend(amount, sourceTokenInfo, targetTokenInfo);
     }
-  }, [approveHash, isApproveConfirming, parsedIntent, recipientAddress, executeSend, address, balance]);
+  }, [isApproveSuccess, parsedIntent, recipientAddress, executeSend, address, balance]);
 
   // Reset state after successful transaction
   useEffect(() => {
