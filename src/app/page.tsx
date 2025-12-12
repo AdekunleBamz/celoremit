@@ -204,6 +204,32 @@ export default function Home() {
     setIsParsing(false);
   };
 
+  // Execute send transaction
+  const executeSend = useCallback((amount: bigint, sourceTokenInfo: typeof MENTO_STABLECOINS[keyof typeof MENTO_STABLECOINS], targetTokenInfo: typeof MENTO_STABLECOINS[keyof typeof MENTO_STABLECOINS]) => {
+    if (!parsedIntent || !recipientAddress) return;
+    
+    const minTarget = quote?.targetAmount || (amount * BigInt(95)) / BigInt(100); // 5% slippage
+    
+    try {
+      sendRemittance({
+        address: CELOREMIT_ADDRESS as `0x${string}`,
+        abi: CELOREMIT_ABI,
+        functionName: 'executeRemittance',
+        args: [
+          recipientAddress as `0x${string}`,
+          sourceTokenInfo.address as `0x${string}`,
+          targetTokenInfo.address as `0x${string}`,
+          amount,
+          minTarget,
+          memo || '',
+        ],
+      });
+    } catch (error) {
+      setError('Failed to send transaction. Please try again.');
+      console.error('Send error:', error);
+    }
+  }, [parsedIntent, recipientAddress, memo, quote, sendRemittance]);
+
   // Execute the remittance
   const executeRemittance = useCallback(async () => {
     console.log('executeRemittance called', { parsedIntent, recipientAddress, address });
@@ -263,15 +289,15 @@ export default function Home() {
     console.log('Checking allowance:', { currentAllowance: currentAllowance.toString(), amount: amount.toString() });
     
     if (currentAllowance < amount) {
-    // First approve the token
+      // First approve the token
       console.log('Approval needed, requesting approval...');
       try {
-    approveToken({
-      address: sourceTokenInfo.address as `0x${string}`,
-      abi: ERC20_ABI,
-      functionName: 'approve',
-      args: [CELOREMIT_ADDRESS as `0x${string}`, amount],
-    });
+        approveToken({
+          address: sourceTokenInfo.address as `0x${string}`,
+          abi: ERC20_ABI,
+          functionName: 'approve',
+          args: [CELOREMIT_ADDRESS as `0x${string}`, amount],
+        });
         console.log('Approval request sent');
       } catch (error) {
         setError('Failed to approve token. Please try again.');
@@ -283,32 +309,6 @@ export default function Home() {
       executeSend(amount, sourceTokenInfo, targetTokenInfo);
     }
   }, [parsedIntent, recipientAddress, address, balance, allowance, approveToken, executeSend]);
-
-  // Execute send transaction
-  const executeSend = useCallback((amount: bigint, sourceTokenInfo: typeof MENTO_STABLECOINS[keyof typeof MENTO_STABLECOINS], targetTokenInfo: typeof MENTO_STABLECOINS[keyof typeof MENTO_STABLECOINS]) => {
-    if (!parsedIntent || !recipientAddress) return;
-    
-    const minTarget = quote?.targetAmount || (amount * BigInt(95)) / BigInt(100); // 5% slippage
-    
-    try {
-      sendRemittance({
-        address: CELOREMIT_ADDRESS as `0x${string}`,
-        abi: CELOREMIT_ABI,
-        functionName: 'executeRemittance',
-        args: [
-          recipientAddress as `0x${string}`,
-          sourceTokenInfo.address as `0x${string}`,
-          targetTokenInfo.address as `0x${string}`,
-          amount,
-          minTarget,
-          memo || '',
-        ],
-      });
-    } catch (error) {
-      setError('Failed to send transaction. Please try again.');
-      console.error('Send error:', error);
-    }
-  }, [parsedIntent, recipientAddress, memo, quote, sendRemittance]);
 
   // After approval, execute the transfer
   useEffect(() => {
