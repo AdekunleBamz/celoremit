@@ -1,16 +1,21 @@
+'use client';
+
 import { http, createConfig } from 'wagmi';
 import { celo } from 'wagmi/chains';
-import { injected, metaMask } from 'wagmi/connectors';
+import { coinbaseWallet, metaMask, walletConnect } from 'wagmi/connectors';
+
+// Get WalletConnect project ID from environment or use default
+const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'celoremit-app';
 
 export const wagmiConfig = createConfig({
   chains: [celo],
-  connectors: [injected(), metaMask()],
-  transports: { [celo.id]: http('https://forno.celo.org') },
+  connectors: [
+    metaMask(),
+    coinbaseWallet({ appName: 'CeloRemit' }),
+    walletConnect({ projectId: walletConnectProjectId }),
+  ],
+  transports: {
+    [celo.id]: http('https://forno.celo.org'),
+  },
   ssr: true,
 });
-
-declare module 'wagmi' {
-  interface Register {
-    config: typeof wagmiConfig;
-  }
-}

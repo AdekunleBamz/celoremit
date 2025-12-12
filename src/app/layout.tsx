@@ -1,10 +1,15 @@
 import type { Metadata, Viewport } from 'next';
-import { WagmiProvider } from '@/providers/WagmiProvider';
+import { Providers } from '@/components/Providers';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: 'CeloRemit - AI-Powered Remittances',
   description: 'Send money globally using natural language. Powered by Mento stablecoins on Celo.',
+  icons: {
+    icon: '/favicon.png',
+    shortcut: '/favicon.png',
+    apple: '/icon-large.png',
+  },
   openGraph: {
     title: 'CeloRemit',
     description: 'AI-powered cross-border payments with 15 Mento stablecoins',
@@ -40,7 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <WagmiProvider>{children}</WagmiProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

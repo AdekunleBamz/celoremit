@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useAccount, useConnect, useDisconnect, useBalance, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { parseUnits, formatUnits } from 'viem';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { parseUnits, formatUnits, isAddress } from 'viem';
+import { sdk } from '@farcaster/miniapp-sdk';
 import { MENTO_STABLECOINS, getActiveStablecoins, ERC20_ABI, CELOREMIT_ADDRESS, CELOREMIT_ABI } from '@/config/contracts';
 import { SelfVerification } from '@/components/SelfVerification';
 import { CurrencySelector } from '@/components/CurrencySelector';
@@ -19,11 +21,15 @@ interface ParsedIntent {
   confidence: number;
 }
 
+interface Quote {
+  targetAmount: bigint;
+  fee: bigint;
+  exchangeRate: bigint;
+}
+
 export default function Home() {
   const { address, isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
-  const { disconnect } = useDisconnect();
-
+  
   const [inputText, setInputText] = useState('');
   const [parsedIntent, setParsedIntent] = useState<ParsedIntent | null>(null);
   const [isParsing, setIsParsing] = useState(false);
@@ -34,16 +40,20 @@ export default function Home() {
   const [isVerified, setIsVerified] = useState(false);
   const [activeTab, setActiveTab] = useState<'send' | 'history'>('send');
   const [isMiniApp, setIsMiniApp] = useState(false);
-  const [farcasterSdk, setFarcasterSdk] = useState<any>(null);
+  const [error, setError] = useState<string>('');
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [isLoadingQuote, setIsLoadingQuote] = useState(false);
+  const [isValidAddress, setIsValidAddress] = useState(true);
+  const hasExecutedRef = useRef(false);
 
+  // Farcaster Mini App initialization
   useEffect(() => {
+    let mounted = true;
     const initMiniApp = async () => {
       try {
-        const { sdk } = await import('@farcaster/miniapp-sdk');
         const context = await sdk.context;
-        if (context) {
+        if (context && mounted) {
           setIsMiniApp(true);
-          setFarcasterSdk(sdk);
           await sdk.actions.ready();
         }
       } catch (e) {
@@ -51,52 +61,119 @@ export default function Home() {
       }
     };
     initMiniApp();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const connectWallet = async () => {
-    try {
-      if (isMiniApp && farcasterSdk) {
-        await farcasterSdk.wallet.ethProvider.request({
-          method: 'eth_requestAccounts',
-        });
-      } else if (connectors.length > 0) {
-        connect({ connector: connectors[0] });
-      }
-    } catch (error) {
-      console.error('Connection failed:', error);
-      if (connectors.length > 0) {
-        connect({ connector: connectors[0] });
-      }
+  // Check verification status from localStorage
+  useEffect(() => {
+    if (address) {
+      const verified = localStorage.getItem(`self_verified_${address}`);
+      setIsVerified(verified === 'true');
     }
-  };
+  }, [address]);
 
-  const sourceToken = parsedIntent 
-    ? MENTO_STABLECOINS[parsedIntent.sourceCurrency as keyof typeof MENTO_STABLECOINS] 
-    : null;
-
+  // Get balance of selected source currency
+  const sourceToken = parsedIntent ? MENTO_STABLECOINS[parsedIntent.sourceCurrency as keyof typeof MENTO_STABLECOINS] : null;
   const { data: balance } = useBalance({
     address,
     token: sourceToken?.address as `0x${string}`,
+    query: {
+      enabled: !!sourceToken && !!address,
+    },
   });
 
+  // Check allowance
+  const { data: allowance } = useReadContract({
+    address: sourceToken?.address as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: 'allowance',
+    args: address && sourceToken ? [address, CELOREMIT_ADDRESS as `0x${string}`] : undefined,
+    query: {
+      enabled: !!sourceToken && !!address && !!parsedIntent,
+    },
+  });
+
+  // Contract write hooks
   const { data: approveHash, writeContract: approveToken, isPending: isApproving } = useWriteContract();
   const { data: sendHash, writeContract: sendRemittance, isPending: isSending } = useWriteContract();
+  
   const { isLoading: isApproveConfirming } = useWaitForTransactionReceipt({ hash: approveHash });
   const { isLoading: isSendConfirming, isSuccess: isSendSuccess } = useWaitForTransactionReceipt({ hash: sendHash });
 
+  // Validate recipient address
+  useEffect(() => {
+    if (recipientAddress) {
+      const isValid = isAddress(recipientAddress);
+      setIsValidAddress(isValid);
+      if (!isValid && recipientAddress.length > 0) {
+        setError('Invalid recipient address');
+      } else {
+        setError('');
+      }
+    } else {
+      setIsValidAddress(true);
+      setError('');
+    }
+  }, [recipientAddress]);
+
+  // Fetch quote when intent changes
+  useEffect(() => {
+    if (!parsedIntent || !address || parsedIntent.amount <= 0) {
+      setQuote(null);
+      return;
+    }
+
+    const sourceTokenInfo = MENTO_STABLECOINS[parsedIntent.sourceCurrency as keyof typeof MENTO_STABLECOINS];
+    const targetTokenInfo = MENTO_STABLECOINS[parsedIntent.targetCurrency as keyof typeof MENTO_STABLECOINS];
+    
+    if (!sourceTokenInfo || !targetTokenInfo || sourceTokenInfo.address === targetTokenInfo.address) {
+      setQuote(null);
+      return;
+    }
+
+    setIsLoadingQuote(true);
+    const fetchQuote = async () => {
+      try {
+        // In a real implementation, call the contract's getQuote function
+        // For now, we'll use a placeholder
+        setQuote({
+          targetAmount: parseUnits((parsedIntent.amount * 0.95).toString(), 18),
+          fee: parseUnits((parsedIntent.amount * 0.01).toString(), 18),
+          exchangeRate: parseUnits('1', 18),
+        });
+      } catch (error) {
+        console.error('Failed to fetch quote:', error);
+      } finally {
+        setIsLoadingQuote(false);
+      }
+    };
+
+    fetchQuote();
+  }, [parsedIntent, address]);
+
+  // Parse intent from natural language
   const parseIntent = async () => {
     if (!inputText.trim()) return;
+    
     setIsParsing(true);
     setParseMessage('');
-
+    setError('');
+    
     try {
       const res = await fetch('/api/parse-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: inputText, userAddress: address }),
       });
+      
+      if (!res.ok) {
+        throw new Error('Failed to parse intent');
+      }
+      
       const data = await res.json();
-
+      
       if (data.success && data.intent) {
         setParsedIntent(data.intent);
         setParseMessage(data.message || '');
@@ -111,37 +188,85 @@ export default function Home() {
         setParsedIntent(null);
       }
     } catch (error) {
-      setParseMessage('Failed to process your request');
+      setParseMessage('Failed to process your request. Please try again.');
       setParsedIntent(null);
+      setError('Network error. Please check your connection.');
     }
+    
     setIsParsing(false);
   };
 
-  const executeRemittance = async () => {
-    if (!parsedIntent || !recipientAddress || !address) return;
+  // Execute the remittance
+  const executeRemittance = useCallback(async () => {
+    if (!parsedIntent || !recipientAddress || !address) {
+      setError('Please fill in all required fields');
+      return;
+    }
 
+    // Validate address
+    if (!isAddress(recipientAddress)) {
+      setError('Invalid recipient address');
+      return;
+    }
+
+    // Validate amount
+    if (parsedIntent.amount <= 0) {
+      setError('Amount must be greater than 0');
+      return;
+    }
+    
     const sourceTokenInfo = MENTO_STABLECOINS[parsedIntent.sourceCurrency as keyof typeof MENTO_STABLECOINS];
     const targetTokenInfo = MENTO_STABLECOINS[parsedIntent.targetCurrency as keyof typeof MENTO_STABLECOINS];
+    
+    if (!sourceTokenInfo || !targetTokenInfo) {
+      setError('Invalid currency selection');
+      return;
+    }
 
-    if (!sourceTokenInfo || !targetTokenInfo) return;
+    // Check if same currency
+    if (sourceTokenInfo.address === targetTokenInfo.address) {
+      setError('Source and target currencies cannot be the same');
+      return;
+    }
 
+    // Check balance
+    if (balance && balance.value < parseUnits(parsedIntent.amount.toString(), 18)) {
+      setError('Insufficient balance');
+      return;
+    }
+
+    setError('');
+    hasExecutedRef.current = false;
     const amount = parseUnits(parsedIntent.amount.toString(), 18);
-
+    
+    // Check if approval is needed
+    const currentAllowance = allowance || BigInt(0);
+    if (currentAllowance < amount) {
+    // First approve the token
+      try {
     approveToken({
       address: sourceTokenInfo.address as `0x${string}`,
       abi: ERC20_ABI,
       functionName: 'approve',
       args: [CELOREMIT_ADDRESS as `0x${string}`, amount],
     });
-  };
+      } catch (error) {
+        setError('Failed to approve token. Please try again.');
+        console.error('Approval error:', error);
+      }
+    } else {
+      // Already approved, execute directly
+      executeSend(amount, sourceTokenInfo, targetTokenInfo);
+    }
+  }, [parsedIntent, recipientAddress, address, balance, allowance, approveToken]);
 
-  useEffect(() => {
-    if (approveHash && !isApproveConfirming && parsedIntent && recipientAddress) {
-      const sourceTokenInfo = MENTO_STABLECOINS[parsedIntent.sourceCurrency as keyof typeof MENTO_STABLECOINS];
-      const targetTokenInfo = MENTO_STABLECOINS[parsedIntent.targetCurrency as keyof typeof MENTO_STABLECOINS];
-      const amount = parseUnits(parsedIntent.amount.toString(), 18);
-      const minTarget = (amount * BigInt(95)) / BigInt(100);
-
+  // Execute send transaction
+  const executeSend = useCallback((amount: bigint, sourceTokenInfo: typeof MENTO_STABLECOINS[keyof typeof MENTO_STABLECOINS], targetTokenInfo: typeof MENTO_STABLECOINS[keyof typeof MENTO_STABLECOINS]) => {
+    if (!parsedIntent || !recipientAddress) return;
+    
+    const minTarget = quote?.targetAmount || (amount * BigInt(95)) / BigInt(100); // 5% slippage
+    
+    try {
       sendRemittance({
         address: CELOREMIT_ADDRESS as `0x${string}`,
         abi: CELOREMIT_ABI,
@@ -152,165 +277,376 @@ export default function Home() {
           targetTokenInfo.address as `0x${string}`,
           amount,
           minTarget,
-          memo,
+          memo || '',
         ],
       });
+    } catch (error) {
+      setError('Failed to send transaction. Please try again.');
+      console.error('Send error:', error);
     }
-  }, [approveHash, isApproveConfirming]);
+  }, [parsedIntent, recipientAddress, memo, quote, sendRemittance]);
 
-  const quickActions = ['Send $50 to Kenya', 'Transfer 100 cUSD to Philippines', 'Convert 200 cEUR to cKES'];
-
-  const getButtonText = () => {
-    if (!isConnected) return 'Connect Wallet';
-    if (isApproving || isApproveConfirming) return 'Approving...';
-    if (isSending || isSendConfirming) return 'Sending...';
-    if (isSendSuccess) return '✓ Sent!';
-    if (parsedIntent) return 'Send ' + parsedIntent.amount + ' ' + parsedIntent.sourceCurrency;
-    return 'Send';
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      parseIntent();
+  // After approval, execute the transfer
+  useEffect(() => {
+    if (approveHash && !isApproveConfirming && !hasExecutedRef.current && parsedIntent && recipientAddress) {
+      hasExecutedRef.current = true;
+      const sourceTokenInfo = MENTO_STABLECOINS[parsedIntent.sourceCurrency as keyof typeof MENTO_STABLECOINS];
+      const targetTokenInfo = MENTO_STABLECOINS[parsedIntent.targetCurrency as keyof typeof MENTO_STABLECOINS];
+      
+      if (!sourceTokenInfo || !targetTokenInfo) return;
+      
+      const amount = parseUnits(parsedIntent.amount.toString(), 18);
+      executeSend(amount, sourceTokenInfo, targetTokenInfo);
     }
-  };
+  }, [approveHash, isApproveConfirming, parsedIntent, recipientAddress, executeSend]);
+
+  // Reset state after successful transaction
+  useEffect(() => {
+    if (isSendSuccess) {
+      // Reset form after a delay
+      setTimeout(() => {
+        setParsedIntent(null);
+        setRecipientAddress('');
+        setMemo('');
+        setInputText('');
+        setParseMessage('');
+        setQuote(null);
+        hasExecutedRef.current = false;
+      }, 3000);
+    }
+  }, [isSendSuccess]);
+
+  // Quick action buttons
+  const quickActions = [
+    'Send $50 to Kenya',
+    'Transfer 100 cUSD to Philippines',
+    'Convert 200 cEUR to cKES',
+    'Send 1000 to 0x...',
+  ];
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-emerald-900 to-emerald-950 text-white">
+      {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-emerald-900/80 border-b border-emerald-700/50">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-2xl">💸</span>
             <h1 className="text-xl font-bold">CeloRemit</h1>
           </div>
-          {isConnected ? (
-            <button onClick={() => disconnect()} className="px-3 py-1.5 bg-emerald-700/50 rounded-full text-sm">
-              {address?.slice(0, 6)}...{address?.slice(-4)}
-            </button>
-          ) : (
-            <button onClick={connectWallet} className="px-4 py-1.5 bg-yellow-500 text-emerald-900 rounded-full text-sm font-semibold hover:bg-yellow-400 transition">
-              Connect
-            </button>
-          )}
+          
+          <ConnectButton.Custom>
+            {({
+              account,
+              chain,
+              openAccountModal,
+              openConnectModal,
+              mounted,
+            }) => {
+              const ready = mounted;
+              const connected = ready && account && chain;
+              
+              return (
+                <div
+                  {...(!ready && {
+                    'aria-hidden': true,
+                    style: {
+                      opacity: 0,
+                      pointerEvents: 'none',
+                      userSelect: 'none',
+                    },
+                  })}
+                >
+                  {(() => {
+                    if (!connected) {
+                      return (
+                        <button
+                          onClick={openConnectModal}
+                          type="button"
+                          className="px-4 py-1.5 bg-yellow-500 text-emerald-900 rounded-full text-sm font-semibold"
+                        >
+                          Connect
+                        </button>
+                      );
+                    }
+
+                    return (
+                      <button
+                        onClick={openAccountModal}
+                        type="button"
+                        className="px-3 py-1.5 bg-emerald-700/50 rounded-full text-sm"
+                      >
+                        {account.displayName}
+                      </button>
+                    );
+                  })()}
+                </div>
+              );
+            }}
+          </ConnectButton.Custom>
         </div>
       </header>
 
+      {/* Tab Navigation */}
       <div className="max-w-lg mx-auto px-4 py-2">
         <div className="flex gap-2 bg-emerald-800/30 rounded-xl p-1">
-          <button onClick={() => setActiveTab('send')} className={'flex-1 py-2 rounded-lg text-sm font-medium transition ' + (activeTab === 'send' ? 'bg-emerald-600 text-white' : 'text-emerald-300')}>
+          <button
+            onClick={() => setActiveTab('send')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+              activeTab === 'send' ? 'bg-emerald-600 text-white' : 'text-emerald-300'
+            }`}
+          >
             💸 Send
           </button>
-          <button onClick={() => setActiveTab('history')} className={'flex-1 py-2 rounded-lg text-sm font-medium transition ' + (activeTab === 'history' ? 'bg-emerald-600 text-white' : 'text-emerald-300')}>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+              activeTab === 'history' ? 'bg-emerald-600 text-white' : 'text-emerald-300'
+            }`}
+          >
             📜 History
           </button>
         </div>
       </div>
 
       <div className="max-w-lg mx-auto px-4 pb-24">
-        {activeTab === 'send' && (
-          <div>
+        {activeTab === 'send' ? (
+          <>
+            {/* AI Intent Input */}
             <div className="mt-4 bg-emerald-800/30 rounded-2xl p-4">
-              <label className="text-sm text-emerald-300 mb-2 block">Tell me what you want to send 🤖</label>
+              <label className="text-sm text-emerald-300 mb-2 block">
+                Tell me what you want to send 🤖
+              </label>
               <div className="relative">
                 <textarea
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={handleKeyDown}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), parseIntent())}
                   placeholder="Send $50 to my mom in Philippines..."
                   className="w-full bg-emerald-900/50 rounded-xl px-4 py-3 text-white placeholder-emerald-400/50 resize-none h-20 pr-12"
                 />
-                <button onClick={parseIntent} disabled={isParsing || !inputText.trim()} className="absolute right-2 bottom-2 p-2 bg-yellow-500 rounded-lg text-emerald-900 disabled:opacity-50 hover:bg-yellow-400 transition">
+                <button
+                  onClick={parseIntent}
+                  disabled={isParsing || !inputText.trim()}
+                  className="absolute right-2 bottom-2 p-2 bg-yellow-500 rounded-lg text-emerald-900 disabled:opacity-50"
+                >
                   {isParsing ? '⏳' : '✨'}
                 </button>
               </div>
+              
+              {/* Quick Actions */}
               <div className="flex gap-2 mt-3 flex-wrap">
                 {quickActions.map((action) => (
-                  <button key={action} onClick={() => setInputText(action)} className="text-xs px-3 py-1 bg-emerald-700/30 rounded-full text-emerald-300 hover:bg-emerald-700/50 transition">
+                  <button
+                    key={action}
+                    onClick={() => { setInputText(action); }}
+                    className="text-xs px-3 py-1 bg-emerald-700/30 rounded-full text-emerald-300 hover:bg-emerald-700/50"
+                  >
                     {action}
                   </button>
                 ))}
               </div>
             </div>
 
+            {/* Parsed Intent Display */}
             {parseMessage && (
-              <div className={'mt-4 p-4 rounded-xl ' + (parsedIntent ? 'bg-emerald-700/30' : 'bg-red-900/30')}>
+              <div className={`mt-4 p-4 rounded-xl ${parsedIntent ? 'bg-emerald-700/30' : 'bg-red-900/30'}`}>
                 <p className="text-lg font-semibold">{parseMessage}</p>
-                {parsedIntent && <p className="text-sm text-emerald-300 mt-1">Confidence: {Math.round(parsedIntent.confidence * 100)}%</p>}
+                {parsedIntent && (
+                  <p className="text-sm text-emerald-300 mt-1">
+                    Confidence: {Math.round(parsedIntent.confidence * 100)}%
+                  </p>
+                )}
               </div>
             )}
 
+            {/* Transfer Form */}
             {parsedIntent && (
               <div className="mt-4 bg-emerald-800/30 rounded-2xl p-4 space-y-4">
+                {/* Currency Display */}
                 <div className="flex items-center justify-between">
-                  <CurrencySelector value={parsedIntent.sourceCurrency} onChange={(c) => setParsedIntent({ ...parsedIntent, sourceCurrency: c })} label="From" />
+                  <CurrencySelector
+                    value={parsedIntent.sourceCurrency}
+                    onChange={(c) => setParsedIntent({ ...parsedIntent, sourceCurrency: c })}
+                    label="From"
+                  />
                   <span className="text-2xl">→</span>
-                  <CurrencySelector value={parsedIntent.targetCurrency} onChange={(c) => setParsedIntent({ ...parsedIntent, targetCurrency: c })} label="To" />
+                  <CurrencySelector
+                    value={parsedIntent.targetCurrency}
+                    onChange={(c) => setParsedIntent({ ...parsedIntent, targetCurrency: c })}
+                    label="To"
+                  />
                 </div>
 
+                {/* Amount */}
                 <div>
                   <label className="text-sm text-emerald-300">Amount</label>
-                  <input type="number" value={parsedIntent.amount} onChange={(e) => setParsedIntent({ ...parsedIntent, amount: parseFloat(e.target.value) || 0 })} className="w-full bg-emerald-900/50 rounded-xl px-4 py-3 mt-1 text-xl font-bold" />
-                  {balance && <p className="text-xs text-emerald-400 mt-1">Balance: {formatUnits(balance.value, 18)} {balance.symbol}</p>}
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={parsedIntent.amount}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 0;
+                      setParsedIntent({ ...parsedIntent, amount: value });
+                      setError('');
+                    }}
+                    className="w-full bg-emerald-900/50 rounded-xl px-4 py-3 mt-1 text-xl font-bold"
+                  />
+                  {balance && (
+                    <p className={`text-xs mt-1 ${
+                      balance.value < parseUnits(parsedIntent.amount.toString(), 18) 
+                        ? 'text-red-400' 
+                        : 'text-emerald-400'
+                    }`}>
+                      Balance: {formatUnits(balance.value, 18)} {balance.symbol}
+                      {balance.value < parseUnits(parsedIntent.amount.toString(), 18) && ' (Insufficient)'}
+                    </p>
+                  )}
+                  {quote && (
+                    <p className="text-xs text-emerald-300 mt-1">
+                      Estimated: ~{formatUnits(quote.targetAmount, 18)} {parsedIntent.targetCurrency}
+                    </p>
+                  )}
                 </div>
 
+                {/* Recipient */}
                 <div>
                   <label className="text-sm text-emerald-300">Recipient Address</label>
-                  <input type="text" value={recipientAddress} onChange={(e) => setRecipientAddress(e.target.value)} placeholder="0x..." className="w-full bg-emerald-900/50 rounded-xl px-4 py-3 mt-1 font-mono text-sm" />
+                  <input
+                    type="text"
+                    value={recipientAddress}
+                    onChange={(e) => {
+                      setRecipientAddress(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="0x..."
+                    className={`w-full bg-emerald-900/50 rounded-xl px-4 py-3 mt-1 font-mono text-sm ${
+                      !isValidAddress && recipientAddress ? 'border-2 border-red-500' : ''
+                    }`}
+                  />
+                  {!isValidAddress && recipientAddress && (
+                    <p className="text-xs text-red-400 mt-1">Invalid address format</p>
+                  )}
                 </div>
 
+                {/* Memo */}
                 <div>
                   <label className="text-sm text-emerald-300">Memo (optional)</label>
-                  <input type="text" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="For groceries..." className="w-full bg-emerald-900/50 rounded-xl px-4 py-3 mt-1" />
+                  <input
+                    type="text"
+                    value={memo}
+                    onChange={(e) => setMemo(e.target.value)}
+                    placeholder="For groceries..."
+                    className="w-full bg-emerald-900/50 rounded-xl px-4 py-3 mt-1"
+                  />
                 </div>
 
+                {/* Error Message */}
+                {error && (
+                  <div className="bg-red-900/30 border border-red-500/50 rounded-xl p-3">
+                    <p className="text-red-300 text-sm">{error}</p>
+                  </div>
+                )}
+
+                {/* Verification Status */}
                 {isVerified ? (
                   <div className="flex items-center gap-2 text-green-400 text-sm">
                     <span>✓</span> Identity Verified via Self Protocol
                   </div>
                 ) : (
-                  <button onClick={() => setShowVerification(true)} className="w-full py-2 bg-blue-600/30 rounded-xl text-blue-300 text-sm hover:bg-blue-600/50 transition">
-                    🔐 Verify Identity (Self Protocol)
-                  </button>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => setShowVerification(true)}
+                      className="w-full py-2 bg-blue-600/30 rounded-xl text-blue-300 text-sm hover:bg-blue-600/40 transition"
+                    >
+                      🔐 Verify Identity (Self Protocol) - Optional
+                    </button>
+                    <p className="text-xs text-emerald-400 text-center">
+                      Verification is optional. You can send without verifying.
+                    </p>
+                  </div>
                 )}
 
-                <button onClick={executeRemittance} disabled={!isConnected || !recipientAddress || isApproving || isSending || isApproveConfirming || isSendConfirming} className="w-full py-4 bg-yellow-500 text-emerald-900 rounded-xl font-bold text-lg disabled:opacity-50 hover:bg-yellow-400 transition">
-                  {getButtonText()}
+                {/* Send Button */}
+                <button
+                  onClick={executeRemittance}
+                  disabled={
+                    !isConnected || 
+                    !recipientAddress || 
+                    !isValidAddress ||
+                    parsedIntent.amount <= 0 ||
+                    (balance && balance.value < parseUnits(parsedIntent.amount.toString(), 18)) ||
+                    parsedIntent.sourceCurrency === parsedIntent.targetCurrency ||
+                    isApproving || 
+                    isSending || 
+                    isApproveConfirming || 
+                    isSendConfirming ||
+                    isLoadingQuote
+                  }
+                  className="w-full py-4 bg-yellow-500 text-emerald-900 rounded-xl font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-yellow-400 transition"
+                >
+                  {!isConnected ? 'Connect Wallet' :
+                   isLoadingQuote ? 'Loading quote...' :
+                   isApproving || isApproveConfirming ? 'Approving...' :
+                   isSending || isSendConfirming ? 'Sending...' :
+                   isSendSuccess ? '✓ Sent!' :
+                   `Send ${parsedIntent.amount} ${parsedIntent.sourceCurrency}`}
                 </button>
 
                 {isSendSuccess && sendHash && (
-                  <a href={'https://celoscan.io/tx/' + sendHash} target="_blank" rel="noopener noreferrer" className="block text-center text-emerald-300 text-sm underline">
+                  <a
+                    href={`https://celoscan.io/tx/${sendHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-center text-emerald-300 text-sm underline"
+                  >
                     View on Celoscan →
                   </a>
                 )}
               </div>
             )}
 
+            {/* Supported Currencies */}
             <div className="mt-6">
               <h3 className="text-sm text-emerald-300 mb-3">Supported Currencies</h3>
               <div className="grid grid-cols-4 gap-2">
                 {getActiveStablecoins().map((coin) => (
-                  <div key={coin.symbol} className="bg-emerald-800/30 rounded-xl p-2 text-center">
+                  <div
+                    key={coin.symbol}
+                    className="bg-emerald-800/30 rounded-xl p-2 text-center"
+                  >
                     <span className="text-xl">{coin.flag}</span>
                     <p className="text-xs font-medium mt-1">{coin.symbol}</p>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
+          </>
+        ) : (
+          <TransactionHistory address={address} />
         )}
-
-        {activeTab === 'history' && <TransactionHistory address={address} />}
       </div>
 
+      {/* Self Protocol Verification Modal */}
       {showVerification && (
         <SelfVerification
-          onVerified={() => { setIsVerified(true); setShowVerification(false); }}
-          onClose={() => setShowVerification(false)}
+          onVerified={() => {
+            if (address) {
+              localStorage.setItem(`self_verified_${address}`, 'true');
+            }
+            setIsVerified(true);
+            setShowVerification(false);
+            setError(''); // Clear any errors
+          }}
+          onClose={() => {
+            setShowVerification(false);
+            // Don't require verification - allow sending without it
+          }}
           userAddress={address || ''}
         />
       )}
 
+      {/* Powered by Footer */}
       <footer className="fixed bottom-0 left-0 right-0 bg-emerald-900/90 backdrop-blur border-t border-emerald-700/50 py-3">
         <div className="flex justify-center items-center gap-4 text-xs text-emerald-400">
           <span>Powered by</span>

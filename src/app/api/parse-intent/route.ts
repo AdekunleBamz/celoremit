@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MENTO_STABLECOINS, COUNTRY_CURRENCY_MAP, getActiveStablecoins } from '@/config/contracts';
+import { getEnvVarOptional } from '@/utils/env';
 
 // Lazy-load OpenAI to avoid build errors
 const getOpenAI = async () => {
+  const apiKey = getEnvVarOptional('OPENAI_API_KEY');
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY is not configured');
+  }
   const { default: OpenAI } = await import('openai');
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return new OpenAI({ apiKey });
 };
 
 interface ParsedIntent {
@@ -37,49 +42,84 @@ Default source to cUSD. Infer target from destination country.`;
 export async function POST(request: NextRequest) {
   try {
     const { message } = await request.json();
-    if (!message) return NextResponse.json({ success: false, message: 'Message required' }, { status: 400 });
+    if (!message || typeof message !== 'string') {
+      return NextResponse.json({ success: false, message: 'Message required' }, { status: 400 });
+    }
 
-    if (!process.env.OPENAI_API_KEY) {
+    // Check if OpenAI API key is available
+    const apiKey = getEnvVarOptional('OPENAI_API_KEY');
+    if (!apiKey) {
+      // Use fallback parsing if OpenAI is not configured
       return NextResponse.json(parseIntentFallback(message));
     }
 
-    const openai = await getOpenAI();
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'system', content: getSystemPrompt() }, { role: 'user', content: message }],
-      temperature: 0.1,
-      max_tokens: 300,
-    });
-
-    const response = completion.choices[0]?.message?.content;
-    if (!response) return NextResponse.json(parseIntentFallback(message));
-
     try {
-      const parsed = JSON.parse(response.trim());
-      const validated = validateIntent(parsed);
-      return NextResponse.json({
-        success: true,
-        intent: validated,
-        message: formatIntent(validated),
+      const openai = await getOpenAI();
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'system', content: getSystemPrompt() }, { role: 'user', content: message }],
+        temperature: 0.1,
+        max_tokens: 300,
       });
-    } catch {
+
+      const response = completion.choices[0]?.message?.content;
+      if (!response) {
+        return NextResponse.json(parseIntentFallback(message));
+      }
+
+      try {
+        // Try to parse JSON response
+        const cleanedResponse = response.trim().replace(/^```json\s*|\s*```$/g, '');
+        const parsed = JSON.parse(cleanedResponse);
+        const validated = validateIntent(parsed);
+        return NextResponse.json({
+          success: true,
+          intent: validated,
+          message: formatIntent(validated),
+        });
+      } catch (parseError) {
+        // If JSON parsing fails, use fallback
+        console.warn('Failed to parse OpenAI response:', parseError);
+        return NextResponse.json(parseIntentFallback(message));
+      }
+    } catch (openaiError: unknown) {
+      // If OpenAI API fails, fall back to rule-based parsing
+      console.warn('OpenAI API error, using fallback:', openaiError);
       return NextResponse.json(parseIntentFallback(message));
     }
   } catch (error) {
     console.error('Intent parsing error:', error);
-    return NextResponse.json({ success: false, message: 'Failed to process' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: 'Failed to process request. Please try again.' },
+      { status: 500 }
+    );
   }
 }
 
-function validateIntent(p: any) {
+interface RawIntent {
+  action?: string;
+  amount?: number | string;
+  sourceCurrency?: string;
+  targetCurrency?: string;
+  recipient?: string;
+  recipientType?: string;
+  memo?: string;
+  confidence?: number | string;
+}
+
+function validateIntent(p: RawIntent): ParsedIntent['intent'] {
   const validCurrencies = Object.keys(MENTO_STABLECOINS);
+  const validActions: Array<'send' | 'convert' | 'check_rate'> = ['send', 'convert', 'check_rate'];
+  
   return {
-    action: ['send', 'convert', 'check_rate'].includes(p.action) ? p.action : 'send',
-    amount: Number(p.amount) || 0,
-    sourceCurrency: validCurrencies.includes(p.sourceCurrency) ? p.sourceCurrency : 'cUSD',
-    targetCurrency: validCurrencies.includes(p.targetCurrency) ? p.targetCurrency : 'cUSD',
+    action: (validActions.includes(p.action as any) ? p.action : 'send') as 'send' | 'convert' | 'check_rate',
+    amount: Math.max(0, Number(p.amount) || 0),
+    sourceCurrency: validCurrencies.includes(p.sourceCurrency || '') ? (p.sourceCurrency as string) : 'cUSD',
+    targetCurrency: validCurrencies.includes(p.targetCurrency || '') ? (p.targetCurrency as string) : 'cUSD',
     recipient: p.recipient,
-    recipientType: p.recipientType || 'country',
+    recipientType: (p.recipientType === 'address' || p.recipientType === 'contact' || p.recipientType === 'country') 
+      ? p.recipientType 
+      : 'country',
     memo: p.memo,
     confidence: Math.min(1, Math.max(0, Number(p.confidence) || 0.5)),
   };
@@ -116,10 +156,11 @@ function parseIntentFallback(message: string): ParsedIntent {
   return { success: true, intent, message: formatIntent(intent) };
 }
 
-function formatIntent(i: any): string {
+function formatIntent(i: ParsedIntent['intent']): string {
   const src = MENTO_STABLECOINS[i.sourceCurrency as keyof typeof MENTO_STABLECOINS];
   const tgt = MENTO_STABLECOINS[i.targetCurrency as keyof typeof MENTO_STABLECOINS];
   if (i.action === 'send') return `Send ${i.amount} ${src?.symbol} ${src?.flag || ''} → ${tgt?.symbol} ${tgt?.flag || ''}`;
   if (i.action === 'convert') return `Convert ${i.amount} ${src?.symbol} to ${tgt?.symbol}`;
   return `Rate: ${src?.symbol} → ${tgt?.symbol}`;
 }
+
