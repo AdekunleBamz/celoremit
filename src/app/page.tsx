@@ -53,20 +53,39 @@ export default function Home() {
   // Farcaster Mini App initialization
   useEffect(() => {
     let mounted = true;
+    let readyTimeout: NodeJS.Timeout;
+    
     const initMiniApp = async () => {
       try {
         const context = await sdk.context;
         if (context && mounted) {
           setIsMiniApp(true);
-          await sdk.actions.ready();
+          console.log('✅ Farcaster Mini App context detected');
+          
+          // Call ready() after 5 seconds to allow app to load
+          readyTimeout = setTimeout(async () => {
+            if (mounted) {
+              try {
+                await sdk.actions.ready();
+                console.log('✅ Farcaster splash screen dismissed');
+              } catch (error) {
+                console.error('Error calling sdk.actions.ready():', error);
+              }
+            }
+          }, 5000);
         }
       } catch (e) {
-        console.log('Not in Farcaster context');
+        console.log('ℹ️ Not in Farcaster context');
       }
     };
+    
     initMiniApp();
+    
     return () => {
       mounted = false;
+      if (readyTimeout) {
+        clearTimeout(readyTimeout);
+      }
     };
   }, []);
 
