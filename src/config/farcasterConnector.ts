@@ -7,7 +7,7 @@ export const farcasterConnector = () => {
     name: 'Farcaster Wallet',
     type: 'injected',
     
-    async connect() {
+    async connect({ chainId } = {}) {
       try {
         const provider = await this.getProvider();
         if (!provider) throw new Error('Farcaster wallet not available');
@@ -18,7 +18,7 @@ export const farcasterConnector = () => {
         
         return {
           accounts: accounts as readonly `0x${string}`[],
-          chainId: 42220, // Celo
+          chainId: chainId || 42220, // Use provided chainId or default to Celo
         };
       } catch (error) {
         console.error('Farcaster wallet connection error:', error);
