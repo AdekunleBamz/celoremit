@@ -1,14 +1,15 @@
 const hre = require("hardhat");
+const { ethers } = require("hardhat");
 
 async function main() {
   console.log("🚀 Deploying CeloRemit contract...\n");
 
-  const [deployer] = await hre.ethers.getSigners();
+  const [deployer] = await ethers.getSigners();
   console.log("Deploying with account:", deployer.address);
-  console.log("Account balance:", (await hre.ethers.provider.getBalance(deployer.address)).toString());
+  console.log("Account balance:", (await ethers.provider.getBalance(deployer.address)).toString());
 
   // Deploy CeloRemit
-  const CeloRemit = await hre.ethers.getContractFactory("CeloRemit");
+  const CeloRemit = await ethers.getContractFactory("CeloRemit");
   const celoRemit = await CeloRemit.deploy();
 
   await celoRemit.waitForDeployment();

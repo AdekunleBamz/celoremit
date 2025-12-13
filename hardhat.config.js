@@ -1,16 +1,22 @@
-const { config: loadEnv } = require("dotenv");
-loadEnv({ path: ".env.local" });
+require("dotenv").config({ path: ".env.local" });
 
 require("@nomicfoundation/hardhat-toolbox");
 require("@nomicfoundation/hardhat-verify");
 
+// Verify PRIVATE_KEY is loaded
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
+if (!PRIVATE_KEY || PRIVATE_KEY === "") {
+  console.error("\n❌ ERROR: PRIVATE_KEY not found in .env.local");
+  console.error("Please add your wallet private key to .env.local\n");
+}
+
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
-    version: "0.8.20",
+    version: "0.8.30",
     settings: {
       optimizer: {
-        enabled: true,
+        enabled: false, // Match your original deployment
         runs: 200,
       },
     },
@@ -19,14 +25,16 @@ module.exports = {
     // Celo Mainnet
     celo: {
       url: "https://forno.celo.org",
-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
       chainId: 42220,
+      timeout: 60000,
     },
     // Celo Alfajores Testnet
     alfajores: {
       url: "https://alfajores-forno.celo-testnet.org",
-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
       chainId: 44787,
+      timeout: 60000,
     },
     // Local development
     localhost: {
