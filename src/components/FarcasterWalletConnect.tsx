@@ -7,7 +7,6 @@ import { sdk } from '@farcaster/miniapp-sdk';
 export function FarcasterWalletConnect() {
   const [isFarcaster, setIsFarcaster] = useState(false);
   const [farcasterUser, setFarcasterUser] = useState<any>(null);
-  const [farcasterWallet, setFarcasterWallet] = useState<string | null>(null);
   const { isConnected, address } = useAccount();
 
   useEffect(() => {
@@ -19,17 +18,7 @@ export function FarcasterWalletConnect() {
         if (context && mounted) {
           setIsFarcaster(true);
           setFarcasterUser(context.user);
-          
-          // Get Farcaster wallet if available
-          if (context.client?.wallet) {
-            setFarcasterWallet(context.client.wallet.address);
-            console.log('✅ Farcaster wallet detected:', context.client.wallet.address);
-          }
-          
-          console.log('✅ Farcaster Mini App context:', {
-            user: context.user,
-            client: context.client,
-          });
+          console.log('✅ Farcaster Mini App context:', context);
         }
       } catch (e) {
         if (mounted) {
@@ -62,9 +51,9 @@ export function FarcasterWalletConnect() {
         </span>
       </div>
       
-      {farcasterWallet && !isConnected && (
+      {!isConnected && (
         <div className="mt-2 text-xs text-yellow-300">
-          ⚡ Click "Connect" above to connect your Farcaster wallet
+          ⚡ Click "Connect" above to connect your wallet
         </div>
       )}
       
@@ -72,12 +61,6 @@ export function FarcasterWalletConnect() {
         <div className="mt-2 text-xs text-emerald-400 flex items-center gap-2">
           <span>✓ Wallet:</span>
           <span className="font-mono">{address.slice(0, 6)}...{address.slice(-4)}</span>
-        </div>
-      )}
-      
-      {!farcasterWallet && !isConnected && (
-        <div className="mt-2 text-xs text-gray-400">
-          Connect your wallet using the button above
         </div>
       )}
     </div>
