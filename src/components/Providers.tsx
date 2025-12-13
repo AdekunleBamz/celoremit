@@ -40,17 +40,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // Check if running in Farcaster Mini App context
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      try {
-        // The SDK is available globally when running in Farcaster
-        const context = sdk.context;
-        if (context) {
-          console.log('✅ Running in Farcaster Mini App context');
-        } else {
+      // Check if Farcaster SDK context is available
+      sdk.context
+        .then((context) => {
+          console.log('✅ Running in Farcaster Mini App context', context);
+        })
+        .catch(() => {
           console.log('ℹ️ Running outside Farcaster (web browser)');
-        }
-      } catch (error) {
-        console.log('ℹ️ Farcaster SDK not available');
-      }
+        });
     }
   }, []);
 
