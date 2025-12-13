@@ -1,24 +1,32 @@
 import { createConnector } from 'wagmi';
 import { sdk } from '@farcaster/miniapp-sdk';
 
+type EthereumProvider = {
+  request: (args: { method: string; params?: any[] }) => Promise<any>;
+  on?: (event: string, handler: (...args: any[]) => void) => void;
+  removeListener?: (event: string, handler: (...args: any[]) => void) => void;
+};
+
 export const farcasterConnector = () => {
   return createConnector((config) => ({
     id: 'farcaster',
     name: 'Farcaster Wallet',
     type: 'injected',
     
-    async connect({ chainId } = {}) {
+    async connect(parameters = {}) {
       try {
         const provider = await this.getProvider();
         if (!provider) throw new Error('Farcaster wallet not available');
         
         const accounts = await provider.request({
           method: 'eth_requestAccounts',
-        });
+        }) as string[];
+        
+        const currentChainId = parameters.chainId || 42220;
         
         return {
-          accounts: accounts as readonly `0x${string}`[],
-          chainId: chainId || 42220, // Use provided chainId or default to Celo
+          accounts: accounts as any,
+          chainId: currentChainId,
         };
       } catch (error) {
         console.error('Farcaster wallet connection error:', error);
@@ -30,36 +38,36 @@ export const farcasterConnector = () => {
       // Farcaster wallet doesn't need explicit disconnect
     },
     
-    async getAccounts() {
+    async getAccounts(): Promise<readonly `0x${string}`[]> {
       const provider = await this.getProvider();
       if (!provider) return [];
       
       const accounts = await provider.request({
         method: 'eth_accounts',
-      });
+      }) as string[];
       
       return accounts as readonly `0x${string}`[];
     },
     
-    async getChainId() {
+    async getChainId(): Promise<number> {
       const provider = await this.getProvider();
       if (!provider) return 42220; // Default to Celo
       
       const chainId = await provider.request({
         method: 'eth_chainId',
-      });
+      }) as string;
       
       return Number(chainId);
     },
     
-    async getProvider() {
+    async getProvider(): Promise<EthereumProvider | null> {
       try {
         const context = await sdk.context;
         
         // Check if we're in Farcaster and have wallet access
-        if (context?.client?.wallet) {
+        if (context && typeof window !== 'undefined' && (window as any).ethereum) {
           // The Farcaster SDK provides an EIP-1193 provider
-          return (window as any).ethereum || null;
+          return (window as any).ethereum as EthereumProvider;
         }
         
         return null;
