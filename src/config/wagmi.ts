@@ -3,6 +3,7 @@
 import { http, createConfig } from 'wagmi';
 import { celo } from 'wagmi/chains';
 import { coinbaseWallet, metaMask, walletConnect, injected } from 'wagmi/connectors';
+import { farcasterConnector } from './farcasterConnector';
 
 // Get WalletConnect project ID from environment or use default
 const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'celoremit-app';
@@ -10,21 +11,18 @@ const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID 
 export const wagmiConfig = createConfig({
   chains: [celo],
   connectors: [
-    // Injected connector for Farcaster wallet and other injected wallets
-    injected({
-      target() {
-        return {
-          id: 'farcaster',
-          name: 'Farcaster Wallet',
-          provider: typeof window !== 'undefined' ? window.ethereum : undefined,
-        };
-      },
-    }),
+    // Farcaster wallet connector (appears first in Farcaster Mini App)
+    farcasterConnector(),
+    // Injected wallet (browser extensions)
+    injected(),
+    // MetaMask
     metaMask(),
+    // Coinbase Wallet
     coinbaseWallet({ 
       appName: 'CeloRemit',
-      preference: 'smartWalletOnly', // Prioritize Smart Wallet for better UX
+      preference: 'smartWalletOnly',
     }),
+    // WalletConnect
     walletConnect({ 
       projectId: walletConnectProjectId,
       showQrModal: true,
@@ -34,5 +32,5 @@ export const wagmiConfig = createConfig({
     [celo.id]: http('https://forno.celo.org'),
   },
   ssr: true,
-  multiInjectedProviderDiscovery: true, // Enable detection of multiple wallets
+  multiInjectedProviderDiscovery: true,
 });
