@@ -12,6 +12,7 @@ import { MENTO_STABLECOINS, getActiveStablecoins, ERC20_ABI, CELOREMIT_ADDRESS, 
 import { SelfVerification } from '@/components/SelfVerification';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { TransactionHistory } from '@/components/TransactionHistory';
+import { FarcasterWalletConnect } from '@/components/FarcasterWalletConnect';
 
 interface ParsedIntent {
   action: 'send' | 'convert' | 'check_rate';
