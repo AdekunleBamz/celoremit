@@ -36,20 +36,21 @@ function getQueryClient() {
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const queryClient = getQueryClient();
-  const [isMiniAppReady, setIsMiniAppReady] = useState(false);
 
-  // Initialize Farcaster Mini App SDK
+  // Check if running in Farcaster Mini App context
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      sdk.init()
-        .then(() => {
-          console.log('✅ Farcaster Mini App SDK initialized');
-          setIsMiniAppReady(true);
-        })
-        .catch((error) => {
-          console.log('ℹ️ Running outside Farcaster context:', error.message);
-          setIsMiniAppReady(true); // Continue anyway for web access
-        });
+      try {
+        // The SDK is available globally when running in Farcaster
+        const context = sdk.context;
+        if (context) {
+          console.log('✅ Running in Farcaster Mini App context');
+        } else {
+          console.log('ℹ️ Running outside Farcaster (web browser)');
+        }
+      } catch (error) {
+        console.log('ℹ️ Farcaster SDK not available');
+      }
     }
   }, []);
 
