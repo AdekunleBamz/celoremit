@@ -1,20 +1,31 @@
 {
   "accountAssociation": {
-    "header": "GENERATE_VIA_WARPCAST_DEVELOPER_TOOLS",
-    "payload": "GENERATE_VIA_WARPCAST_DEVELOPER_TOOLS",
-    "signature": "GENERATE_VIA_WARPCAST_DEVELOPER_TOOLS"
+    "header": "eyJmaWQiOjY1MzQ3OSwidHlwZSI6ImF1dGgiLCJrZXkiOiIweDFFNmY4NGYyMzA1MTZlNDM1MTkwNkY1YkIxRjZiNDJBOTkzNThlNzIifQ",
+    "payload": "eyJkb21haW4iOiJjZWxvcmVtaXQudmVyY2VsLmFwcCJ9",
+    "signature": "o+KxJG7fh6c9mBvJbn8w9qkED/hc4J/3Zy/M97+EZxtvX+/G9FlpVaN0ptTji/00Vd47OfYXMIU+0REZ1RTrLRw="
   },
   "frame": {
     "version": "1",
     "name": "CeloRemit",
-    "iconUrl": "https://YOUR_DOMAIN/icon.png",
-    "homeUrl": "https://YOUR_DOMAIN",
-    "imageUrl": "https://YOUR_DOMAIN/og-image.png",
-    "splashImageUrl": "https://YOUR_DOMAIN/splash.png",
+    "iconUrl": "https://celoremit.vercel.app/icon.png",
+    "homeUrl": "https://celoremit.vercel.app",
+    "imageUrl": "https://celoremit.vercel.app/og-image.png",
+    "splashImageUrl": "https://celoremit.vercel.app/splash.png",
     "splashBackgroundColor": "#0D4A3C",
     "buttonTitle": "💸 Send Money",
-    "webhookUrl": "https://YOUR_DOMAIN/api/webhook",
+    "webhookUrl": "https://celoremit.vercel.app/api/webhook",
+    "subtitle": "AI-Powered Cross-Border Payments",
+    "description": "Send money globally using natural language with 15 Mento stablecoins. Say 'Send $50 to my mom in Philippines' and we handle the rest. Instant, low-fee remittances across Africa, Asia, Americas, and Europe.",
+    "screenshotUrls": [
+      "https://celoremit.vercel.app/og-image.png"
+    ],
     "primaryCategory": "finance",
-    "tags": ["remittance", "payments", "celo", "stablecoins", "mento", "defi", "ai"]
+    "tags": ["remittance", "payments", "celo", "stablecoins", "ai"],
+    "heroImageUrl": "https://celoremit.vercel.app/og-image.png",
+    "tagline": "Send money globally with AI in seconds",
+    "ogTitle": "CeloRemit - AI-Powered Remittances on Celo",
+    "ogDescription": "The easiest way to send money across borders. Natural language remittances with 15 Mento stablecoins. Fees under 1%, instant settlement.",
+    "ogImageUrl": "https://celoremit.vercel.app/og-image.png",
+    "castShareUrl": "https://celoremit.vercel.app"
   }
 }

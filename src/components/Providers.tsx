@@ -5,6 +5,7 @@ import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider } from 'wagmi';
 import { wagmiConfig } from '@/config/wagmi';
+import { sdk } from '@farcaster/miniapp-sdk';
 import '@rainbow-me/rainbowkit/styles.css';
 
 // Create a singleton QueryClient instance
@@ -35,6 +36,22 @@ function getQueryClient() {
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const queryClient = getQueryClient();
+  const [isMiniAppReady, setIsMiniAppReady] = useState(false);
+
+  // Initialize Farcaster Mini App SDK
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sdk.init()
+        .then(() => {
+          console.log('✅ Farcaster Mini App SDK initialized');
+          setIsMiniAppReady(true);
+        })
+        .catch((error) => {
+          console.log('ℹ️ Running outside Farcaster context:', error.message);
+          setIsMiniAppReady(true); // Continue anyway for web access
+        });
+    }
+  }, []);
 
   return (
     <WagmiProvider config={wagmiConfig} reconnectOnMount={false}>
