@@ -14,17 +14,17 @@
     "splashBackgroundColor": "#0D4A3C",
     "buttonTitle": "💸 Send Money",
     "webhookUrl": "https://celoremit.vercel.app/api/webhook",
-    "subtitle": "AI-Powered Cross-Border Payments",
-    "description": "Send money globally using natural language with 15 Mento stablecoins. Say 'Send $50 to my mom in Philippines' and we handle the rest. Instant, low-fee remittances across Africa, Asia, Americas, and Europe.",
+    "subtitle": "AI-Powered Remittances",
+    "description": "Send money globally using natural language with 15 Mento stablecoins. Instant, low-fee remittances across Africa, Asia, Americas, and Europe powered by AI.",
     "screenshotUrls": [
       "https://celoremit.vercel.app/og-image.png"
     ],
     "primaryCategory": "finance",
     "tags": ["remittance", "payments", "celo", "stablecoins", "ai"],
     "heroImageUrl": "https://celoremit.vercel.app/og-image.png",
-    "tagline": "Send money globally with AI in seconds",
-    "ogTitle": "CeloRemit - AI-Powered Remittances on Celo",
-    "ogDescription": "The easiest way to send money across borders. Natural language remittances with 15 Mento stablecoins. Fees under 1%, instant settlement.",
+    "tagline": "Send money globally with AI",
+    "ogTitle": "CeloRemit AI Remittances",
+    "ogDescription": "Send money globally using natural language. 15 Mento stablecoins. Low fees, instant settlement.",
     "ogImageUrl": "https://celoremit.vercel.app/og-image.png",
     "castShareUrl": "https://celoremit.vercel.app"
   }
