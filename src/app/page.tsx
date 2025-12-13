@@ -514,6 +514,11 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Farcaster Mini App Indicator */}
+      <div className="max-w-lg mx-auto px-4 pt-4">
+        <FarcasterWalletConnect />
+      </div>
+
       {/* Tab Navigation */}
       <div className="max-w-lg mx-auto px-4 py-2">
         <div className="flex gap-2 bg-emerald-800/30 rounded-xl p-1">
